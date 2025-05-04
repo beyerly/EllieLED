@@ -18,11 +18,7 @@ from adafruit_display_shapes.line import Line
 from adafruit_bitmap_font import bitmap_font
 
 keys = keypad.Keys((board.GP28,board.GP20, board.GP21, board.GP18, board.GP19), value_when_pressed=False, pull=False)
-
-# Hardware
-# Buzzer
 pwm = pwmio.PWMOut(board.GP22, variable_frequency=True)
-
 
 # rgb matrix LED display
 displayio.release_displays()
@@ -34,43 +30,17 @@ matrix = rgbmatrix.RGBMatrix(
 display = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
 
 g = displayio.Group()       # main screen
-border = displayio.Group()
 
 # Sounds
-def edgebeep():
-    pwm.frequency = 1300
-    pwm.duty_cycle = 0x7fff
-    time.sleep(.01)
-    pwm.duty_cycle = 0
-
-def clickbeep():
-    pwm.frequency = 1500
-    pwm.duty_cycle = 0x7fff
-    time.sleep(.001)
-    pwm.duty_cycle = 0
-
-def paddlebeep():
-    pwm.frequency = 1800
-    pwm.duty_cycle = 0x7fff
-    time.sleep(.02)
-    pwm.duty_cycle = 0
-
-def goalbeep(repeat):
-    pwm.duty_cycle = 0x7fff
+def beep(freq_0, freq_1, repeat, lenght = 0.01):
+    pwm.duty_cycle = 0xfff
+    # pwm.duty_cycle = 0x0
     for i in range(repeat):
-        pwm.frequency = 880
-        time.sleep(.05)
-        pwm.frequency = 1600
-        time.sleep(.05)
-    pwm.duty_cycle = 0
-
-def selectbeep(repeat):
-    pwm.duty_cycle = 0x7fff
-    for i in range(repeat):
-        pwm.frequency = 1200
-        time.sleep(.05)
-        pwm.frequency = 2400
-        time.sleep(.05)
+        pwm.frequency = freq_0
+        time.sleep(lenght)
+        if freq_1 > 0:
+            pwm.frequency = freq_1
+        time.sleep(lenght)
     pwm.duty_cycle = 0
     
 # Color palette
@@ -125,47 +95,6 @@ g.append(tile_grid)
 display.root_group = g
 target_fps = 1
 
-# Sounds and popup screen for game win
-def paddlebal_win():
-    # Popup screen for game win
-    win_screen = Label(text=str("Score!!"), font=terminalio.FONT, color=palette[15], line_spacing=.7, scale=1)
-    win_screen.x = 10
-    win_screen.y = -5
-    g.append(win_screen)
-    for i in range(20):
-        win_screen.y += 1
-        display.refresh(minimum_frames_per_second=0)
-    for i in range(3):
-        display.refresh(minimum_frames_per_second=0)
-        goalbeep(2)
-        win_screen.text = ""
-        display.refresh(minimum_frames_per_second=0)
-        goalbeep(2)
-        win_screen.text = "Score!!"
-    g.remove(win_screen)
-    display.refresh(minimum_frames_per_second=0)
-
-def game_over():
-    # Popup screen for game win
-    text = "Game Over..."
-    win_screen = Label(text=text, font=terminalio.FONT, color=palette[15], line_spacing=.7, scale=1)
-    win_screen.x = 10
-    win_screen.y = -5
-    g.append(win_screen)
-    for i in range(20):
-        win_screen.y += 1
-        display.refresh(minimum_frames_per_second=0)
-    for i in range(3):
-        display.refresh(minimum_frames_per_second=0)
-        goalbeep(2)
-        win_screen.text = ""
-        display.refresh(minimum_frames_per_second=0)
-        goalbeep(2)
-        win_screen.text = text
-    g.remove(win_screen)
-    display.refresh(minimum_frames_per_second=0)
-
-
 # Startup/Welcome screen
 def welcome_screen():
     splash = displayio.Group()  # splash screen
@@ -199,197 +128,6 @@ def splash_0():
     display.refresh(minimum_frames_per_second=0)
     display.root_group = g
 
-def snake():
-    snake_head = (7,5)
-    snake_body = [snake_head]
-    snake_head = (snake_head[0] + 1, snake_head[1])
-    snake_body.append(snake_head)
-    for q in snake_body:
-        draw_pixel(bitmap, q[0], q[1], 1)
-    direction = 'right'
-    fruit = (random.randint(0, 63), random.randint(0, 31))
-    # Game scores
-    score = 0
-    score1_label = Label(text=str(score), font=score_font, color=palette[39], line_spacing=.7, scale=1)
-    score1_label.x = 0
-    score1_label.y = 5
-    g.append(score1_label)
-    level = 0.2
-    play = True
-    while play:
-        event = keys.events.get()
-        if event:
-            if event.pressed:
-                clickbeep()
-                if event.key_number == 0:
-                    play = False
-                if event.key_number == 1:
-                    direction = 'down'
-                if event.key_number == 2:
-                    direction = 'up'
-                if event.key_number == 3:
-                    direction = 'right'
-                if event.key_number == 4:
-                    direction = 'left'
-        if direction == 'right':
-            snake_head = (snake_head[0] + 1, snake_head[1]) 
-        if direction == 'left':
-            snake_head = (snake_head[0] - 1,  snake_head[1])
-        if direction == 'down':
-            snake_head = (snake_head[0], snake_head[1] + 1) 
-        if direction == 'up':
-            snake_head = (snake_head[0], snake_head[1] - 1) 
-        if snake_head[0] > 63 or snake_head[1] > 31 or snake_head[0] < 0 or snake_head[1] < 0 or snake_head in snake_body:
-            game_over()
-            play = False
-            bitmap.fill(0)
-            g.remove(score1_label)
-            continue
-        snake_body.append(snake_head)
-        draw_pixel(bitmap, snake_head[0], snake_head[1], 1)
-        draw_pixel(bitmap, fruit[0], fruit[1], 2)
-        if snake_head == fruit:
-            goalbeep(1)
-            fruit = (random.randint(0, 63), random.randint(0, 31))
-            level = level - 0.01
-            score = score+1
-            score1_label.text = str(score)
-        else:
-            snake_tail = snake_body.pop(0)
-            draw_pixel(bitmap, snake_tail[0], snake_tail[1], 0)
-        display.refresh(minimum_frames_per_second=0)
-        time.sleep(level)
-
-def pong():
-    speed = 0.04
-    playpong = True
-    ball_x_direction = 1
-    ball_y_direction = .7
-
-    # Pong game ball
-    ball_radius = 2
-    ballx = 14
-    bally = 15
-    ball = Circle(ballx, bally, ball_radius, fill=palette[56], outline=palette[56])
-    g.append(ball)
-
-    player1_color = palette[2]
-    player2_color = palette[34]
-
-    # Game scores
-    score1 = 0
-    score1_label = Label(text=str(score1), font=score_font, color=player1_color, line_spacing=.7, scale=1)
-    score1_label.x = 0
-    score1_label.y = 5
-    score2 = 0
-    score2_label = Label(text=str(score2), font=score_font, color=player2_color, line_spacing=.7, scale=1)
-    score2_label.x = 60
-    score2_label.y = 5
-    g.append(score1_label)
-    g.append(score2_label)
-
-    # Pong game paddles
-    paddle_width = 6
-    bob1 = Line(0, 12, 0, 12 + paddle_width, player1_color)
-    bob2 = Line(63, 12, 63, 12 + +paddle_width, player2_color)
-    g.append(bob1)
-    g.append(bob2)
-
-    key1pressed = False
-    key2pressed = False
-    key3pressed = False
-    key4pressed = False
-
-    while playpong:
-        play = True
-        while play:
-            display.refresh(minimum_frames_per_second=0)
-            time.sleep(speed)
-            ball.x = ball.x + ball_x_direction
-            bally = bally + ball_y_direction
-            ball.y = round(bally)
-            print(playpong)
-            event = keys.events.get()
-            if event:
-                if event.key_number == 0:
-                    if event.pressed:
-                        playpong = False
-                        continue
-                if event.key_number == 1:
-                    if event.pressed:
-                        key1pressed = True
-                    else:
-                        key1pressed = False
-                if event.key_number == 2:
-                    if event.pressed:
-                        key2pressed = True
-                    else:
-                        key2pressed = False
-                if event.key_number == 3:
-                    if event.pressed:
-                        key3pressed = True
-                    else:
-                        key3pressed = False
-                if event.key_number == 4:
-                    if event.pressed:
-                        key4pressed = True
-                    else:
-                        key4pressed = False
-
-            if key1pressed:
-                if bob1.y > 0:
-                    bob1.y = bob1.y - 1
-            if key2pressed:
-                if bob1.y < 31 - paddle_width:
-                    bob1.y = bob1.y + 1
-            if key3pressed:
-                if bob2.y > 0:
-                    bob2.y = bob2.y - 1
-            if key4pressed:
-                if bob2.y < 31 - paddle_width:
-                    bob2.y = bob2.y + 1
-
-
-            # Bounce on paddle
-            if ball.x == 63 - ball_radius * 2:
-                if ball.y > bob2.y - ball_radius and ball.y < bob2.y + paddle_width + ball_radius:
-                    ball_x_direction = ball_x_direction * -1
-                    paddlebeep()
-            if ball.x == 0:
-                if ball.y > bob1.y - ball_radius and ball.y < bob1.y + paddle_width + ball_radius:
-                    ball_x_direction = ball_x_direction * -1
-                    paddlebeep()
-
-            # Missed paddle, score points
-            if ball.x < -5:
-                score2 = score2 + 1
-                score2_label.text = str(score2)
-                ball.x = 63
-                play = False
-                paddlebal_win()
-                speed = speed - 0.001
-            if ball.x > 63 + 5:
-                print(score1)
-                score1 = score1 + 1
-                score1_label.text = str(score1)
-                ball.x = 0
-                play = False
-                paddlebal_win()
-                speed = speed - 0.001
-
-            # Bounce on top/bottom screen edge
-            if ball.y == 0:
-                edgebeep()
-                ball_y_direction = ball_y_direction * - 1
-            if ball.y == 31 - 2 * ball_radius:
-                edgebeep()
-                ball_y_direction = ball_y_direction * - 1
-    g.remove(score1_label)
-    g.remove(score2_label)
-    g.remove(bob1)
-    g.remove(bob2)
-    g.remove(ball)
-
 
 def scroll_image():
     b, p = adafruit_imageload.load("images/dog1.bmp")
@@ -407,25 +145,24 @@ def scroll_image():
         display.refresh(minimum_frames_per_second=0)
     g.remove(t)
 
-    
 
 def scroll_text():
-    text1="Ellie's room, stay cool!! ..."
+    text1 = "Ellie's room, stay cool!! ..."
     scrolling_label1 = Label(text=text1, font=terminalio.FONT, color=palette[58], line_spacing=.7, scale=1)
-    text2="No little Brothers allowed!"
+    text2 = "No little Brothers allowed!"
     scrolling_label2 = Label(text=text2, font=terminalio.FONT, color=palette[34], line_spacing=.7, scale=1)
-    text3="Woof Woof, all is good..."
+    text3 = "Woof Woof, all is good..."
     scrolling_label3 = Label(text=text3, font=terminalio.FONT, color=palette[12], line_spacing=.7, scale=1)
     g.append(scrolling_label1)
     g.append(scrolling_label2)
     g.append(scrolling_label3)
-    scrolling_label1.y=5
-    scrolling_label1.x=0
-    scrolling_label2.y=15
-    scrolling_label2.x=0
-    scrolling_label3.y=25
-    scrolling_label3.x=0
-    for x in range(64, -8*len(text1) - 64, -1):
+    scrolling_label1.y = 5
+    scrolling_label1.x = 0
+    scrolling_label2.y = 15
+    scrolling_label2.x = 0
+    scrolling_label3.y = 25
+    scrolling_label3.x = 0
+    for x in range(64, -8 * len(text1) - 64, -1):
         time.sleep(.01)
         scrolling_label1.x = x
         scrolling_label2.x = x
@@ -434,6 +171,7 @@ def scroll_text():
     g.remove(scrolling_label1)
     g.remove(scrolling_label2)
     g.remove(scrolling_label3)
+
 
 def lightshow():
     doshow = True
@@ -448,82 +186,441 @@ def lightshow():
         scroll_image()
         splash_0()
         scroll_text()
-        
-    
-
-mode = 'show'
-#mode = 'pong'
 
 
+class GameBaseClass:
+    def __init__(self, display, display_group, keys, palette, splash, players=1):
+        self.display = display
+        self.display_group = display_group
+        self.keys = keys
+        self.palette = palette
+        self.splash = splash
+        self.score0 = 0
+        self.score1 = 0
+        self.level = 0
+        self.score0_label = Label(text=str(self.score0), font=score_font, color=self.palette[39], line_spacing=.7, scale=1)
+        self.score1_label = Label(text=str(self.score1), font=score_font, color=self.palette[39], line_spacing=.7, scale=1)
+        self.score0_label.x = 1
+        self.score0_label.y = 3
+        self.score1_label.x = 59
+        self.score1_label.y = 3
+        self.level_header = Label(text='LEVEL:', font=score_font, color=self.palette[45], line_spacing=.7, scale=1)
+        self.level_label = Label(text=str(self.level), font=score_font, color=self.palette[45], line_spacing=.7, scale=1)
+        self.level_label.x = 40
+        self.level_label.y = 3
+        self.level_header.x = 16
+        self.level_header.y = 3
+        self.screen_top = 5
+        self.field_div =  Line(0, self.screen_top, 63, self.screen_top, self.palette[59])
+        self.gameinfo = displayio.Group()
+        self.gameinfo.append(self.field_div)
+        self.gameinfo.append(self.level_label)
+        self.gameinfo.append(self.level_header)
+        self.gameinfo.append(self.score0_label)
+        if players > 1:
+            self.gameinfo.append(self.score1_label)
 
-def select_mode():
-    modes = {'snake': None, 'pong': None, 'show': None}
-    top_line = 8
-    top_arrow = 7
-    line_spacing = 8
-    select_values = []
 
-    border_width = 2
-    border_color = palette[51]
-    for c in range(border_width):
-        w = Line(c, 0, c, 32, border_color)
-        border.append(w)
-    for c in range(border_width, 64 - border_width):
-        w = Line(c, 0, c, border_width, border_color)
-        border.append(w)
-        w = Line(c, 32-border_width, c, 32, border_color)
-        border.append(w)
-    for c in range(64 - border_width, 64):
-        w = Line(c, 0, c, 32, border_color)
-        border.append(w)
-    g.append(border)
-    line = top_line
-    for m in modes.keys():
-        modes[m] = Label(text=m, font=terminalio.FONT, color=palette[56], line_spacing=.7, scale=1)
-        modes[m].x = 10
-        modes[m].y = line
-        line = line + line_spacing
-        g.append(modes[m])
-        select_values.append(m)
-    arrow = Triangle(0, 0, 4, 2, 0, 4 , fill=palette[48], outline=palette[48])
-    arrow.y = top_arrow
-    arrow.x = 3
-    g.append(arrow)
-    select = True
-    while select:
-        event = keys.events.get()
-        if event:
-            if event.pressed:
-                if event.key_number == 0:
-                    selectbeep(1)
-                    q = int(arrow.y/line_spacing)
-                    g.remove(border)
-                    g.remove(arrow)
-                    for m in modes.keys():
-                        g.remove(modes[m])
-                    return select_values[q]
-                if event.key_number == 1:
-                    arrow.y = arrow.y + line_spacing
-                    display.refresh(minimum_frames_per_second=0)
-                    edgebeep()
-                if event.key_number == 2:
-                    arrow.y = arrow.y - line_spacing
-                    display.refresh(minimum_frames_per_second=0)
-                    edgebeep()
+class SplashBaseClass:
+    def __init__(self, display, display_group, palette):
+        self.display = display
+        self.display_group = display_group
+        self.palette = palette
+        self.text = "empty"
+        self.splash = Label(text=self.text, font=terminalio.FONT, color=self.palette[15], line_spacing=.7, scale=1)
 
-        if arrow.y > top_arrow+line_spacing*(len(modes)-1):
-            arrow.y = top_arrow+line_spacing*(len(modes)-1)
-        if arrow.y < top_arrow:
-            arrow.y = top_arrow
-        display.refresh(minimum_frames_per_second=0)
- 
+class Splash(SplashBaseClass):
+    def __init__(self, display, display_group, palette):
+        super().__init__(display, display_group, palette)
+
+    def run(self, text, repeat = 3, color=0):
+        self.splash.x = 10
+        self.splash.y = -5
+        self.text = text
+        self.splash.text = self.text
+        if color>0:
+            self.splash.color = color
+        else:
+            self.splash.color = self.palette[15]
+        self.display_group.append(self.splash)
+        for i in range(20):
+            self.splash.y += 1
+            self.display.refresh(minimum_frames_per_second=0)
+        for i in range(repeat):
+            self.display.refresh(minimum_frames_per_second=0)
+            beep(1500, 1800, 1, .05)
+            self.splash.text = ""
+            self.display.refresh(minimum_frames_per_second=0)
+            beep(1500, 1800, 1, .05)
+            self.splash.text = self.text
+        self.display_group.remove(self.splash)
+        self.display.refresh(minimum_frames_per_second=0)
+
+class Jump(GameBaseClass):
+    def __init__(self, display, display_group, keys, palette, bitmap, splash):
+        super().__init__(display, display_group, keys, palette, splash)
+        self.bitmap = bitmap
+        self.ball = Circle(5, 5, 2, fill=palette[56], outline=palette[56])
+        self.character = Circle(5, 5, 2, fill=palette[23], outline=palette[23])
+
+        self.field = displayio.Group()
+        self.field.append(self.ball)
+        self.field.append(self.character)
+
+
+    def run(self):
+        self.play = True
+        self.display_group.append(self.gameinfo)
+        self.display_group.append(self.field)
+        self.jump_up = False
+        self.fall_down = False
+        self.ball.x = 70
+        self.ball.y = 25
+        self.character.x = 30
+        self.character.y = 25
+        while self.play:
+            event = self.keys.events.get()
+            if event:
+                if event.pressed:
+                    beep(900, 0, 1)
+                    if event.key_number == 0 and not self.fall_down:
+                        self.jump_up = True
+                else:
+                    # Released
+                    continue
+            self.ball.x = self.ball.x - 1
+            if self.ball.x < -5:
+                self.ball.x = 70
+            display.refresh(minimum_frames_per_second=0)
+            self.ball.x
+            time.sleep(.05)
+            # if self.character.x < self.ball.x + 4 and  self.character.x > self.ball.x - 4:
+            #     beep(1000, 0, 1, .05)
+            #     self.play = False
+            if self.jump_up:
+                self.character.y = self.character.y - 1
+                if self.character.y < 20:
+                    self.fall_down = True
+                    self.jump_up = False
+            if self.fall_down:
+                self.character.y = self.character.y + 1
+                if self.character.y > 25:
+                    self.fall_down = False
+        self.display_group.remove(self.gameinfo)
+        self.display_group.remove(self.field)
+
+
+class Snake(GameBaseClass):
+    def __init__(self, display, display_group, keys, palette, bitmap, splash):
+        super().__init__(display, display_group, keys, palette, splash)
+        self.bitmap = bitmap
+
+    def run(self):
+        self.snake_head = (13,6)
+        self.snake_body = [self.snake_head]
+        self.snake_head = (self.snake_head[0] + 1, self.snake_head[1])
+        self.snake_body.append(self.snake_head)
+        self.direction = 'right'
+        self.fruit = (random.randint(0, 63), random.randint(self.screen_top, 31))
+        self.fruit_type = 2
+        self.score0 = 0
+        self.score0_label.text = str(self.score0)
+        self.levels = [.2 - i*.01 for i in range(0, 20)]
+        self.level = 0
+        self.level_label.text = str(self.level)
+        self.play = True
+
+        for q in self.snake_body:
+            draw_pixel(self.bitmap, q[0], q[1], 1)
+        self.display_group.append(self.gameinfo)
+        while self.play:
+            event = self.keys.events.get()
+            if event:
+                if event.pressed:
+                    beep(900, 0, 1)
+                    if event.key_number == 0:
+                        self.play = False
+                        continue
+                    if event.key_number == 1:
+                        self.direction = 'down'
+                    if event.key_number == 2:
+                        self.direction = 'up'
+                    if event.key_number == 3:
+                        self.direction = 'right'
+                    if event.key_number == 4:
+                        self.direction = 'left'
+                else:
+                    # Released
+                    continue
+            if self.direction == 'right':
+                self.snake_head = (self.snake_head[0] + 1, self.snake_head[1])
+            if self.direction == 'left':
+                self.snake_head = (self.snake_head[0] - 1,  self.snake_head[1])
+            if self.direction == 'down':
+                self.snake_head = (self.snake_head[0], self.snake_head[1] + 1)
+            if self.direction == 'up':
+                self.snake_head = (self.snake_head[0], self.snake_head[1] - 1)
+            if self.snake_head[0] > 63 or self.snake_head[1] > 31 or self.snake_head[0] < 0 or self.snake_head[1] < self.screen_top or self.snake_head in self.snake_body:
+                self.splash.run("Game Over...")
+                self.play = False
+                continue
+            self.snake_body.append(self.snake_head)
+            draw_pixel(self.bitmap, self.snake_head[0], self.snake_head[1], 1)
+            draw_pixel(self.bitmap, self.fruit[0], self.fruit[1], self.fruit_type)
+            if self.snake_head == self.fruit:
+                if self.fruit_type == 2:
+                    beep(1600, 0, 1)
+                    self.score0 = self.score0+1
+                else:
+                    beep(1600, 1800, 1)
+                    self.score0 = self.score0 + 5
+                    self.level = self.level + 1
+                    self.level_label.text = str(self.level)
+                self.fruit = (random.randint(0, 63), random.randint(self.screen_top, 31))
+                chance = random.randint(0, 10)
+                if chance > 8:
+                    self.fruit_type = 3
+                else:
+                    self.fruit_type = 2
+
+                if self.score0 % 10 == 0:
+                    self.level = self.level + 1
+                    self.level_label.text = str(self.level)
+                self.score0_label.text = str(self.score0)
+            else:
+                self.snake_tail = self.snake_body.pop(0)
+                draw_pixel(self.bitmap, self.snake_tail[0], self.snake_tail[1], 0)
+            self.display.refresh(minimum_frames_per_second=0)
+            time.sleep(self.levels[self.level])
+        self.bitmap.fill(0)
+        self.display_group.remove(self.gameinfo)
+
+
+class Pong(GameBaseClass):
+    def __init__(self, display, display_group, keys, palette, splash, players = 2):
+        super().__init__(display, display_group, keys, palette, splash, players)
+             # main screen
+        self.speed = 0.04
+        self.playpong = True
+        self.field = displayio.Group()
+        self.ball_x_direction = 1
+        self.ball_y_direction = .7
+
+        # Pong game ball
+        self.ball_radius = 2
+        self.ballx = 14
+        self.bally = 15
+        self.ball = Circle(self.ballx, self.bally, self.ball_radius, fill=palette[56], outline=palette[56])
+        self.field.append(self.ball)
+
+        self.player1_color = self.palette[2]
+        self.player2_color = self.palette[34]
+
+        self.field.append(self.gameinfo)
+
+        # Pong game paddles
+        self.paddle_width = 6
+        self.bob1 = Line(0, 12, 0, 12 + self.paddle_width, self.player1_color)
+        self.bob2 = Line(63, 12, 63, 12 + self.paddle_width, self.player2_color)
+        self.field.append(self.bob1)
+        self.field.append(self.bob2)
+
+        self.levels = [.05 - i*.001 for i in range(0, 20)]
+
+    def run(self):
+        self.level = 0
+        self.level_label.text = str(self.level)
+        self.playpong = True
+        self.ball_x_direction = 1
+        self.ball_y_direction = .7
+        self.ballx = 14
+        self.bally = 15
+        self.score1 = 0
+        self.score2 = 0
+        self.display_group.append(self.field)
+        self.key1pressed = False
+        self.key2pressed = False
+        self.key3pressed = False
+        self.key4pressed = False
+        while self.playpong:
+            self.play = True
+            while self.play:
+                display.refresh(minimum_frames_per_second=0)
+                time.sleep(self.levels[self.level])
+                self.ball.x = self.ball.x + self.ball_x_direction
+                self.bally = self.bally + self.ball_y_direction
+                self.ball.y = round(self.bally)
+                event = keys.events.get()
+                if event:
+                    if event.key_number == 0:
+                        if event.pressed:
+                            self.playpong = False
+                            break
+                    if event.key_number == 1:
+                        if event.pressed:
+                            self.key1pressed = True
+                        else:
+                            self.key1pressed = False
+                    if event.key_number == 2:
+                        if event.pressed:
+                            self.key2pressed = True
+                        else:
+                            self.key2pressed = False
+                    if event.key_number == 3:
+                        if event.pressed:
+                            self.key3pressed = True
+                        else:
+                            self.key3pressed = False
+                    if event.key_number == 4:
+                        if event.pressed:
+                            self.key4pressed = True
+                        else:
+                            self.key4pressed = False
+
+                if self.key2pressed:
+                    if self.bob1.y > 0:
+                        self.bob1.y = self.bob1.y - 1
+                if self.key1pressed:
+                    if self.bob1.y < 31 - self.paddle_width:
+                        self.bob1.y = self.bob1.y + 1
+                if self.key4pressed:
+                    if self.bob2.y > 0:
+                        self.bob2.y = self.bob2.y - 1
+                if self.key3pressed:
+                    if self.bob2.y < 31 - self.paddle_width:
+                        self.bob2.y = self.bob2.y + 1
+
+                # Bounce on paddle
+                if self.ball.x == 63 - self.ball_radius * 2:
+                    if self.ball.y > self.bob2.y - self.ball_radius and self.ball.y < self.bob2.y + self.paddle_width + self.ball_radius:
+                        self.ball_x_direction = self.ball_x_direction * -1
+                        beep(1800, 0 , 1, .02)
+                if self.ball.x == 0:
+                    if self.ball.y > self.bob1.y - self.ball_radius and self.ball.y < self.bob1.y + self.paddle_width + self.ball_radius:
+                        self.ball_x_direction = self.ball_x_direction * -1
+                        beep(1800, 0 , 1, .02)
+
+                # Missed paddle, score points
+                if self.ball.x < -5 or self.ball.x > 63 + 5:
+                    if self.ball.x < -5:
+                        self.score1 = self.score1 + 1
+                        self.score1_label.text = str(self.score1)
+                    else:
+                        self.score0 = self.score0 + 1
+                        self.score0_label.text = str(self.score0)
+                    self.ball.x = 30
+                    self.play = False
+                    self.splash.run("Score!!", 1)
+                    if (self.score0 + self.score1) % 6 == 0:
+                        self.splash.run("Level Up!!", 2, palette[59])
+                        self.level = self.level + 1
+                        self.level_label.text = str(self.level)
+
+                # Bounce on top/bottom screen edge
+                if self.ball.y == 0:
+                    beep(1300, 0, 1, .01)
+                    self.ball_y_direction = self.ball_y_direction * - 1
+                if self.ball.y == 31 - 2 * self.ball_radius:
+                    beep(1300, 0, 1, .01)
+                    self.ball_y_direction = self.ball_y_direction * - 1
+        self.display_group.remove(self.field)
+
+
+
+
+class SelectMode(GameBaseClass):
+    def __init__(self, display, display_group, keys, palette, splash):
+        super().__init__(display, display_group, keys, palette, splash)
+        self.modes = {'jump': None, 'snake': None, 'pong': None, 'show': None}
+        self.top_line = 8
+        self.line = self.top_line
+        self.top_arrow = 7
+        self.line_spacing = 8
+        self.lines_per_Screen = 3
+        self.select_values = []
+        self.border_width = 2
+        self.border_color = palette[51]
+        self.select_screen = displayio.Group()
+        self.menu = displayio.Group()
+        self.top_of_screen = self.top_arrow
+        self.bottom_of_screen = self.top_arrow + self.line_spacing * (self.lines_per_Screen - 1)
+
+        for c in range(self.border_width):
+            w = Line(c, 0, c, 32, self.border_color)
+            self.select_screen.append(w)
+        for c in range(self.border_width, 64 - self.border_width):
+            w = Line(c, 0, c, self.border_width, self.border_color)
+            self.select_screen.append(w)
+            w = Line(c, 32-self.border_width, c, 32, self.border_color)
+            self.select_screen.append(w)
+        for c in range(64 - self.border_width, 64):
+            w = Line(c, 0, c, 32, self.border_color)
+            self.select_screen.append(w)
+        for m in self.modes.keys():
+            self.modes[m] = Label(text=m, font=terminalio.FONT, color=palette[56], line_spacing=.7, scale=1)
+            self.modes[m].x = 10
+            self.modes[m].y = self.line
+            self.line = self.line + self.line_spacing
+            self.menu.append(self.modes[m])
+            self.select_values.append(m)
+        self.arrow = Triangle(0, 0, 4, 2, 0, 4 , fill=palette[48], outline=palette[48])
+        self.arrow.y = self.top_arrow
+        self.arrow.x = 3
+        self.menu.append(self.arrow)
+        self.select_screen.append(self.menu)
+        self.select = True
+
+    def run(self):
+        self.display_group.append(self.select_screen)
+        while self.select:
+            event = self.keys.events.get()
+            if event:
+                if event.pressed:
+                    if event.key_number == 0:
+                        beep(1200, 1800, 1, 0.05)
+                        q = int(self.arrow.y/self.line_spacing)
+                        self.display_group.remove(self.select_screen)
+                        return self.select_values[q]
+                    if event.key_number == 1:
+                        # down
+                        if self.arrow.y == self.bottom_of_screen:
+                            self.menu.y = self.menu.y - self.line_spacing
+                            self.bottom_of_screen = self.bottom_of_screen +  self.line_spacing
+                            self.top_of_screen = self.top_of_screen + self.line_spacing
+                        self.arrow.y = self.arrow.y + self.line_spacing
+                        self.display.refresh(minimum_frames_per_second=0)
+                        beep(1200, 0, 1)
+                    if event.key_number == 2:
+                        # up
+                        if self.arrow.y == self.top_of_screen and self.menu.y < 0:
+                            self.menu.y = self.menu.y + self.line_spacing
+                            self.bottom_of_screen = self.bottom_of_screen - self.line_spacing
+                            self.top_of_screen = self.top_of_screen - self.line_spacing
+                        self.arrow.y = self.arrow.y - self.line_spacing
+                        self.display.refresh(minimum_frames_per_second=0)
+                        beep(1200, 0, 1)
+
+            if self.arrow.y > self.top_arrow+self.line_spacing*(len(self.modes)-1):
+                self.arrow.y = self.top_arrow+self.line_spacing*(len(self.modes)-1)
+            if self.arrow.y < self.top_arrow:
+                self.arrow.y = self.top_arrow
+            self.display.refresh(minimum_frames_per_second=0)
+
+splash = Splash(display, g, palette)
+select_mode = SelectMode(display, g, keys, palette, splash)
+snake = Snake(display, g, keys, palette, bitmap, splash)
+pong = Pong(display, g, keys, palette, splash)
+jump = Jump(display, g, keys, palette, bitmap, splash)
 
 while True:
-    edgebeep()
-    mode = select_mode()
+    beep(800, 1700, 3, .05)
+    mode = select_mode.run()
     if mode == 'pong':
-        pong()
+        pong.run()
     if mode == 'show':
         lightshow()
     if mode == 'snake':
-        snake()
+        snake.run()
+    if mode == 'jump':
+        jump.run()
+
