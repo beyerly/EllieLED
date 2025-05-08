@@ -9,7 +9,14 @@ import pwmio
 import board
 import keypad
 import random
+import json
+import storage
 
+connected =digitalio.DigitalInOut(board.VBUS_SENSE)
+connected.direction = digitalio.Direction.INPUT
+
+if not connected.value:
+    storage.remount("/", False)
 
 from adafruit_display_text.label import Label
 from adafruit_display_shapes.circle import Circle
@@ -31,10 +38,26 @@ display = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
 
 g = displayio.Group()       # main screen
 
+
+class HighScores:
+    def __init__(self):
+        self.highscores = {}
+        self.filename = "data.json"
+        with open(self.filename, 'r') as file:
+            self.highscores = json.load(file)
+
+    def get_highscore(self, game):
+        return self.highscores[game]
+
+    def update_highscores(self, game, score):
+        if self.highscores[game][0] < score[0]:
+            self.highscores[game] = score
+            with open(self.filename, 'w') as file:
+                json.dump(self.highscores, file)
+
 # Sounds
 def beep(freq_0, freq_1, repeat, lenght = 0.01):
     pwm.duty_cycle = 0xfff
-    # pwm.duty_cycle = 0x0
     for i in range(repeat):
         pwm.frequency = freq_0
         time.sleep(lenght)
@@ -95,106 +118,132 @@ g.append(tile_grid)
 display.root_group = g
 target_fps = 1
 
-# Startup/Welcome screen
-def welcome_screen():
-    splash = displayio.Group()  # splash screen
-    display.root_group = splash
-    for c in range(63):
-        w = Line(c, 0, c, 32, palette[c])
-        splash.append(w)
-        display.refresh(minimum_frames_per_second=0)
-    time.sleep(2)
-    for c in range(63):
-        splash.pop()
-        time.sleep(0.01)
-        display.refresh(minimum_frames_per_second=0)
-    del splash
-    display.root_group = g
+class Show():
+    def __init__(self, display, display_group, keys):
+        self.display = display
+        self.display_group = display_group
+        self.keys = keys
+        self.splash = displayio.Group()  # splash screen
+        self.scenes = ((self.rainbow_fill, []),
+                       (self.scroll_image, ['images/dog1.bmp']), #
+                       (self.line_filler, []),
+                       (self.scroll_text,
+        ["Ellie's room, stay cool!! ...",
+         "No little Brothers allowed!",
+         "Woof Woof, all is good..."]))
 
-# splash 1
-def splash_0():
-    splash = displayio.Group()  # splash screen
-    display.root_group = splash
-    for c in range(31, 0, -1):
-        w0 = Line(0, 0, 0, 31, palette[c+20])
-        w1 = Line(63, 0, 63, 31, palette[c+20])
-        splash.append(w0)
-        splash.append(w1)
-        while w0.x < c:
-            w0.x = w0.x + 1
-            w1.x = w1.x - 1
-            display.refresh(minimum_frames_per_second=0)
-    del splash
-    display.refresh(minimum_frames_per_second=0)
-    display.root_group = g
-
-
-def scroll_image():
-    b, p = adafruit_imageload.load("images/dog1.bmp")
-    t = displayio.TileGrid(b, pixel_shader=p)
-    t.x = 0
-    g.append(t)
-    for x in range(64, 10, -1):
-        t.x = x
-        time.sleep(.001)
-        display.refresh(minimum_frames_per_second=0)
-    time.sleep(2)
-    for y in range(0, -30, -1):
-        t.y = y
-        time.sleep(.001)
-        display.refresh(minimum_frames_per_second=0)
-    g.remove(t)
-
-
-def scroll_text():
-    text1 = "Ellie's room, stay cool!! ..."
-    scrolling_label1 = Label(text=text1, font=terminalio.FONT, color=palette[58], line_spacing=.7, scale=1)
-    text2 = "No little Brothers allowed!"
-    scrolling_label2 = Label(text=text2, font=terminalio.FONT, color=palette[34], line_spacing=.7, scale=1)
-    text3 = "Woof Woof, all is good..."
-    scrolling_label3 = Label(text=text3, font=terminalio.FONT, color=palette[12], line_spacing=.7, scale=1)
-    g.append(scrolling_label1)
-    g.append(scrolling_label2)
-    g.append(scrolling_label3)
-    scrolling_label1.y = 5
-    scrolling_label1.x = 0
-    scrolling_label2.y = 15
-    scrolling_label2.x = 0
-    scrolling_label3.y = 25
-    scrolling_label3.x = 0
-    for x in range(64, -8 * len(text1) - 64, -1):
-        time.sleep(.01)
-        scrolling_label1.x = x
-        scrolling_label2.x = x
-        scrolling_label3.x = x
-        display.refresh(minimum_frames_per_second=0)
-    g.remove(scrolling_label1)
-    g.remove(scrolling_label2)
-    g.remove(scrolling_label3)
-
-
-def lightshow():
-    doshow = True
-    while doshow:
-        event = keys.events.get()
+    def exit_pressed(self):
+        event = self.keys.events.get()
         if event:
             if event.key_number == 0:
                 if event.pressed:
-                    doshow = False
-                    continue
-        welcome_screen()
-        scroll_image()
-        splash_0()
-        scroll_text()
+                    return True
+        return False
+
+    def end_scene(self):
+        while len(self.splash) > 0:
+            self.splash.pop(0)
+        self.display.root_group = self.display_group
+
+    def rainbow_fill(self):
+        self.display.root_group = self.splash
+        for c in range(63):
+            w = Line(c, 0, c, 32, palette[c])
+            self.splash.append(w)
+            display.refresh(minimum_frames_per_second=0)
+            if self.exit_pressed():
+                return True
+        time.sleep(2)
+        for c in range(63):
+            self.splash.pop()
+            time.sleep(0.01)
+            display.refresh(minimum_frames_per_second=0)
+            if self.exit_pressed():
+                return True
+        self.end_scene()
+        return False
+
+    def scroll_text(self, text0, text1, text2, speed =.01):
+        self.display.root_group = self.splash
+        scrolling_label1 = Label(text=text0, font=terminalio.FONT, color=palette[58], line_spacing=.7, scale=1)
+        scrolling_label2 = Label(text=text1, font=terminalio.FONT, color=palette[34], line_spacing=.7, scale=1)
+        scrolling_label3 = Label(text=text2, font=terminalio.FONT, color=palette[12], line_spacing=.7, scale=1)
+        self.splash.append(scrolling_label1)
+        self.splash.append(scrolling_label2)
+        self.splash.append(scrolling_label3)
+        scrolling_label1.y = 5
+        scrolling_label1.x = 0
+        scrolling_label2.y = 15
+        scrolling_label2.x = 0
+        scrolling_label3.y = 25
+        scrolling_label3.x = 0
+        for x in range(64, -8 * len(text1) - 64, -1):
+            time.sleep(speed)
+            scrolling_label1.x = x
+            scrolling_label2.x = x
+            scrolling_label3.x = x
+            if self.exit_pressed():
+                return True
+            display.refresh(minimum_frames_per_second=0)
+        self.end_scene()
+        return False
+
+    def scroll_image(self, image):
+        self.display.root_group = self.splash
+        b, p = adafruit_imageload.load(image)
+        t = displayio.TileGrid(b, pixel_shader=p)
+        t.x = 0
+        self.splash.append(t)
+        for x in range(64, 10, -1):
+            t.x = x
+            time.sleep(.001)
+            display.refresh(minimum_frames_per_second=0)
+            if self.exit_pressed():
+                return True
+        time.sleep(2)
+        for y in range(0, -30, -1):
+            t.y = y
+            time.sleep(.001)
+            display.refresh(minimum_frames_per_second=0)
+            if self.exit_pressed():
+                return True
+        self.end_scene()
+        return False
+
+    def line_filler(self):
+        self.display.root_group = self.splash
+        for c in range(31, 0, -1):
+            w0 = Line(0, 0, 0, 31, palette[c + 20])
+            w1 = Line(63, 0, 63, 31, palette[c + 20])
+            self.splash.append(w0)
+            self.splash.append(w1)
+            while w0.x < c:
+                w0.x = w0.x + 1
+                w1.x = w1.x - 1
+                display.refresh(minimum_frames_per_second=0)
+                if self.exit_pressed():
+                    return True
+        self.end_scene()
+        return False
+
+    def run(self):
+#        random.shuffle(self.scenes)
+        while True:
+            for sc in self.scenes:
+                if sc[0](*sc[1]):
+                    self.end_scene()
+                    return
 
 
 class GameBaseClass:
-    def __init__(self, display, display_group, keys, palette, splash, players=1):
+    def __init__(self, display, display_group, keys, palette, splash, highscores=None, players=1, game='snake'):
+        self.game = game
         self.display = display
         self.display_group = display_group
         self.keys = keys
         self.palette = palette
         self.splash = splash
+        self.highscores = highscores
         self.score0 = 0
         self.score1 = 0
         self.level = 0
@@ -202,14 +251,16 @@ class GameBaseClass:
         self.score1_label = Label(text=str(self.score1), font=score_font, color=self.palette[39], line_spacing=.7, scale=1)
         self.score0_label.x = 1
         self.score0_label.y = 3
-        self.score1_label.x = 59
+        self.score1_label.x = 55
         self.score1_label.y = 3
-        self.level_header = Label(text='LEVEL:', font=score_font, color=self.palette[45], line_spacing=.7, scale=1)
+        self.level_header = Label(text='L', font=score_font, color=self.palette[23], line_spacing=.7, scale=1)
         self.level_label = Label(text=str(self.level), font=score_font, color=self.palette[45], line_spacing=.7, scale=1)
-        self.level_label.x = 40
+        self.level_label.x = 20
         self.level_label.y = 3
         self.level_header.x = 16
         self.level_header.y = 3
+
+
         self.screen_top = 5
         self.field_div =  Line(0, self.screen_top, 63, self.screen_top, self.palette[59])
         self.gameinfo = displayio.Group()
@@ -217,9 +268,74 @@ class GameBaseClass:
         self.gameinfo.append(self.level_label)
         self.gameinfo.append(self.level_header)
         self.gameinfo.append(self.score0_label)
+        if self.highscores:
+            self.highscore_header = Label(text='H', font=score_font, color=self.palette[23], line_spacing=.7, scale=1)
+            self.highscore_label = Label(text=str(self.highscores.get_highscore(self.game)[0]), font=score_font, color=self.palette[45], line_spacing=.7, scale=1)
+            self.highscore_name = Label(text=self.highscores.get_highscore(self.game)[1], font=score_font, color=self.palette[12], line_spacing=.7, scale=1)
+            self.highscore_label.x = 30
+            self.highscore_label.y = 3
+            self.highscore_header.x = 25
+            self.highscore_header.y = 3
+            self.highscore_name.x = 40
+            self.highscore_name.y = 3
+            self.gameinfo.append(self.highscore_label)
+            self.gameinfo.append(self.highscore_header)
+            self.gameinfo.append(self.highscore_name)
+
         if players > 1:
             self.gameinfo.append(self.score1_label)
 
+    def update_highscores(self, score):
+        print(score, self.game)
+        self.highscores.update_highscores(self.game, score)
+        self.highscore_label.text =str(self.highscores.get_highscore(self.game)[0])
+        self.highscore_name.text=self.highscores.get_highscore(self.game)[1]
+
+    def get_name(self):
+        splash = displayio.Group()  # splash screen
+        cursor = Line(20, 25, 25, 25, self.palette[56])
+        letter = 97
+        name = ['a']
+        prompt = Label(text="New Highscore!! Enter name...", font=terminalio.FONT, color=self.palette[3], line_spacing=.7, scale=1)
+        prompt.x = 64
+        prompt.y = 10
+        label = Label(text="".join(name), font=terminalio.FONT, color=self.palette[15], line_spacing=.7, scale=1)
+        label.x = 20
+        label.y = 20
+        splash.append(cursor)
+        splash.append(prompt)
+        splash.append(label)
+        self.display_group.append(splash)
+        while True:
+            prompt.x = prompt.x - 1
+            if prompt.x < -1*prompt.bounding_box[2]:
+                prompt.x = 64
+            event = self.keys.events.get()
+            if event:
+                if event.pressed:
+                    beep(900, 0, 1)
+                    if event.key_number == 0:
+                        if len(name) < 3:
+                            cursor.x = cursor.x + 5
+                            name.append('a')
+                            letter = 97
+                            label.text = "".join(name)
+                        else:
+                            self.display_group.remove(splash)
+                            del splash
+                            return label.text
+                    if event.key_number == 1:
+                        letter = letter + 1
+                        name[len(name) - 1] = chr(letter)
+                        label.text = "".join(name)
+                    if event.key_number == 2:
+                        letter = letter - 1
+                        name[len(name) - 1] = chr(letter)
+                        label.text = "".join(name)
+                else:
+                    # Released
+                    continue
+            self.display.refresh(minimum_frames_per_second=0)
 
 class SplashBaseClass:
     def __init__(self, display, display_group, palette):
@@ -257,7 +373,7 @@ class Splash(SplashBaseClass):
         self.display.refresh(minimum_frames_per_second=0)
 
 class Jump(GameBaseClass):
-    def __init__(self, display, display_group, keys, palette, bitmap, splash):
+    def __init__(self, display, display_group, keys, palette, bitmap, splash, game='jump'):
         super().__init__(display, display_group, keys, palette, splash)
         self.bitmap = bitmap
         self.ball = Circle(5, 5, 2, fill=palette[56], outline=palette[56])
@@ -311,8 +427,8 @@ class Jump(GameBaseClass):
 
 
 class Snake(GameBaseClass):
-    def __init__(self, display, display_group, keys, palette, bitmap, splash):
-        super().__init__(display, display_group, keys, palette, splash)
+    def __init__(self, display, display_group, keys, palette, bitmap, splash, highscores):
+        super().__init__(display, display_group, keys, palette, splash, highscores, game='snake')
         self.bitmap = bitmap
 
     def run(self):
@@ -321,7 +437,7 @@ class Snake(GameBaseClass):
         self.snake_head = (self.snake_head[0] + 1, self.snake_head[1])
         self.snake_body.append(self.snake_head)
         self.direction = 'right'
-        self.fruit = (random.randint(0, 63), random.randint(self.screen_top, 31))
+        self.fruit = (random.randint(0, 63), random.randint(self.screen_top+1, 31))
         self.fruit_type = 2
         self.score0 = 0
         self.score0_label.text = str(self.score0)
@@ -373,10 +489,8 @@ class Snake(GameBaseClass):
                     self.score0 = self.score0+1
                 else:
                     beep(1600, 1800, 1)
-                    self.score0 = self.score0 + 5
-                    self.level = self.level + 1
-                    self.level_label.text = str(self.level)
-                self.fruit = (random.randint(0, 63), random.randint(self.screen_top, 31))
+                    self.score0 = self.score0 + 3
+                self.fruit = (random.randint(0, 63), random.randint(self.screen_top+1, 31))
                 chance = random.randint(0, 10)
                 if chance > 8:
                     self.fruit_type = 3
@@ -392,13 +506,20 @@ class Snake(GameBaseClass):
                 draw_pixel(self.bitmap, self.snake_tail[0], self.snake_tail[1], 0)
             self.display.refresh(minimum_frames_per_second=0)
             time.sleep(self.levels[self.level])
+        current_highscore = self.highscores.get_highscore(self.game)[0]
+        if self.score0 > current_highscore:
+            beep(1600, 1800, 2)
+            name = self.get_name()
+            score = [self.score0, name]
+            self.update_highscores(score)
         self.bitmap.fill(0)
         self.display_group.remove(self.gameinfo)
 
 
+
 class Pong(GameBaseClass):
-    def __init__(self, display, display_group, keys, palette, splash, players = 2):
-        super().__init__(display, display_group, keys, palette, splash, players)
+    def __init__(self, display, display_group, keys, palette, splash, highscores, players = 2):
+        super().__init__(display, display_group, keys, palette, splash, highscores, players, game='pong')
              # main screen
         self.speed = 0.04
         self.playpong = True
@@ -435,13 +556,16 @@ class Pong(GameBaseClass):
         self.ball_y_direction = .7
         self.ballx = 14
         self.bally = 15
+        self.score0 = 0
+        self.score0_label.text = str(self.score0)
         self.score1 = 0
-        self.score2 = 0
+        self.score1_label.text = str(self.score1)
         self.display_group.append(self.field)
         self.key1pressed = False
         self.key2pressed = False
         self.key3pressed = False
         self.key4pressed = False
+        self.hits = 0
         while self.playpong:
             self.play = True
             while self.play:
@@ -495,10 +619,17 @@ class Pong(GameBaseClass):
                     if self.ball.y > self.bob2.y - self.ball_radius and self.ball.y < self.bob2.y + self.paddle_width + self.ball_radius:
                         self.ball_x_direction = self.ball_x_direction * -1
                         beep(1800, 0 , 1, .02)
+                        self.hits = self.hits + 1
                 if self.ball.x == 0:
                     if self.ball.y > self.bob1.y - self.ball_radius and self.ball.y < self.bob1.y + self.paddle_width + self.ball_radius:
                         self.ball_x_direction = self.ball_x_direction * -1
                         beep(1800, 0 , 1, .02)
+                        self.hits = self.hits + 1
+                if self.hits == 10:
+                    self.splash.run("Level Up!!", 2, palette[59])
+                    self.level = self.level + 1
+                    self.level_label.text = str(self.level)
+                    self.hits = 0
 
                 # Missed paddle, score points
                 if self.ball.x < -5 or self.ball.x > 63 + 5:
@@ -511,10 +642,8 @@ class Pong(GameBaseClass):
                     self.ball.x = 30
                     self.play = False
                     self.splash.run("Score!!", 1)
-                    if (self.score0 + self.score1) % 6 == 0:
-                        self.splash.run("Level Up!!", 2, palette[59])
-                        self.level = self.level + 1
-                        self.level_label.text = str(self.level)
+                    self.hits = 0
+
 
                 # Bounce on top/bottom screen edge
                 if self.ball.y == 0:
@@ -524,9 +653,11 @@ class Pong(GameBaseClass):
                     beep(1300, 0, 1, .01)
                     self.ball_y_direction = self.ball_y_direction * - 1
         self.display_group.remove(self.field)
-
-
-
+        if max(self.score0, self.score1) > self.highscores.get_highscore(self.game)[0]:
+            beep(700, 1500, 3)
+            name = self.get_name()
+            score = [max(self.score0, self.score1), name]
+            self.update_highscores(score)
 
 class SelectMode(GameBaseClass):
     def __init__(self, display, display_group, keys, palette, splash):
@@ -608,9 +739,11 @@ class SelectMode(GameBaseClass):
 
 splash = Splash(display, g, palette)
 select_mode = SelectMode(display, g, keys, palette, splash)
-snake = Snake(display, g, keys, palette, bitmap, splash)
-pong = Pong(display, g, keys, palette, splash)
+highscores = HighScores()
+snake = Snake(display, g, keys, palette, bitmap, splash, highscores)
+pong = Pong(display, g, keys, palette, splash, highscores)
 jump = Jump(display, g, keys, palette, bitmap, splash)
+show = Show(display, g, keys)
 
 while True:
     beep(800, 1700, 3, .05)
@@ -618,7 +751,7 @@ while True:
     if mode == 'pong':
         pong.run()
     if mode == 'show':
-        lightshow()
+        show.run()
     if mode == 'snake':
         snake.run()
     if mode == 'jump':
